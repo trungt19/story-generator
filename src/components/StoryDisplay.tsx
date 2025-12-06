@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Story } from '@/types/story';
 import { exportStory, getExportFormats, type ExportFormat } from '@/lib/exportStory';
+
+type SpeechStatus = 'idle' | 'playing' | 'paused';
 
 interface StoryDisplayProps {
   story: Story;
@@ -35,7 +37,128 @@ const toneColors: Record<string, { bg: string; text: string }> = {
 export function StoryDisplay({ story, onReset }: StoryDisplayProps) {
   const [copied, setCopied] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [speechStatus, setSpeechStatus] = useState<SpeechStatus>('idle');
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const [speechProgress, setSpeechProgress] = useState(0);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const exportFormats = getExportFormats();
+
+  // Check for speech synthesis support
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.speechSynthesis) {
+      setSpeechSupported(false);
+    }
+  }, []);
+
+  // Cleanup on unmount or story change
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [story.id]);
+
+  const handlePlay = useCallback(() => {
+    if (!window.speechSynthesis) return;
+
+    if (speechStatus === 'paused') {
+      window.speechSynthesis.resume();
+      setSpeechStatus('playing');
+      return;
+    }
+
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+
+    // Create new utterance
+    const utterance = new SpeechSynthesisUtterance(story.content);
+    utteranceRef.current = utterance;
+
+    // Configure voice settings
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Try to use a good English voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(
+      (v) => v.lang.startsWith('en') && (v.name.includes('Samantha') || v.name.includes('Daniel') || v.name.includes('Google'))
+    ) || voices.find((v) => v.lang.startsWith('en'));
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    // Event handlers
+    utterance.onstart = () => {
+      setSpeechStatus('playing');
+      setSpeechProgress(0);
+    };
+
+    utterance.onend = () => {
+      setSpeechStatus('idle');
+      setSpeechProgress(0);
+    };
+
+    utterance.onerror = () => {
+      setSpeechStatus('idle');
+      setSpeechProgress(0);
+    };
+
+    utterance.onpause = () => {
+      setSpeechStatus('paused');
+    };
+
+    utterance.onresume = () => {
+      setSpeechStatus('playing');
+    };
+
+    // Approximate progress tracking
+    const words = story.content.split(/\s+/).length;
+    const avgWordsPerSecond = 2.5; // Average speaking rate
+    const estimatedDuration = words / avgWordsPerSecond;
+
+    let progressInterval: NodeJS.Timeout | null = null;
+    utterance.onstart = () => {
+      setSpeechStatus('playing');
+      let elapsed = 0;
+      progressInterval = setInterval(() => {
+        elapsed += 0.1;
+        const progress = Math.min((elapsed / estimatedDuration) * 100, 99);
+        setSpeechProgress(progress);
+      }, 100);
+    };
+
+    utterance.onend = () => {
+      if (progressInterval) clearInterval(progressInterval);
+      setSpeechStatus('idle');
+      setSpeechProgress(0);
+    };
+
+    utterance.onerror = () => {
+      if (progressInterval) clearInterval(progressInterval);
+      setSpeechStatus('idle');
+      setSpeechProgress(0);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, [story.content, speechStatus]);
+
+  const handlePause = useCallback(() => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.pause();
+      setSpeechStatus('paused');
+    }
+  }, []);
+
+  const handleStop = useCallback(() => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setSpeechStatus('idle');
+      setSpeechProgress(0);
+    }
+  }, []);
 
   const handleExport = (format: ExportFormat) => {
     exportStory(story, format);
@@ -101,6 +224,89 @@ export function StoryDisplay({ story, onReset }: StoryDisplayProps) {
             {story.content}
           </div>
         </div>
+
+        {/* Read Aloud Player */}
+        {speechSupported && (
+          <div className="mx-6 sm:mx-8 mb-6 p-4 bg-gradient-to-r from-primary-50 to-purple-50 dark:from-primary-900/20 dark:to-purple-900/20 rounded-xl border border-primary-200 dark:border-primary-800">
+            <div className="flex items-center gap-4">
+              {/* Player Controls */}
+              <div className="flex items-center gap-2">
+                {speechStatus === 'idle' && (
+                  <button
+                    onClick={handlePlay}
+                    className="w-12 h-12 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-lg shadow-primary-500/30"
+                    title="Play"
+                  >
+                    <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </button>
+                )}
+
+                {speechStatus === 'playing' && (
+                  <button
+                    onClick={handlePause}
+                    className="w-12 h-12 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-lg shadow-primary-500/30"
+                    title="Pause"
+                  >
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                    </svg>
+                  </button>
+                )}
+
+                {speechStatus === 'paused' && (
+                  <button
+                    onClick={handlePlay}
+                    className="w-12 h-12 rounded-full bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center transition-all hover:scale-105 shadow-lg shadow-primary-500/30"
+                    title="Resume"
+                  >
+                    <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </button>
+                )}
+
+                {speechStatus !== 'idle' && (
+                  <button
+                    onClick={handleStop}
+                    className="w-10 h-10 rounded-full bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-neutral-700 dark:text-neutral-200 flex items-center justify-center transition-all"
+                    title="Stop"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 6h12v12H6z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {/* Progress and Label */}
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-primary-700 dark:text-primary-300 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m2.828-9.9a9 9 0 0112.728 0" />
+                    </svg>
+                    {speechStatus === 'idle' && 'Read Aloud'}
+                    {speechStatus === 'playing' && 'Playing...'}
+                    {speechStatus === 'paused' && 'Paused'}
+                  </span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    ~{Math.ceil(story.wordCount / 150)} min
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary-500 to-purple-500 rounded-full transition-all duration-100"
+                    style={{ width: `${speechProgress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Story Footer */}
         <div className="px-6 sm:px-8 pb-6 sm:pb-8">
