@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     const wordTarget = wordCountTargets[params.length];
 
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: wordTarget.tokens,
       temperature: 0.7,
       messages: [{

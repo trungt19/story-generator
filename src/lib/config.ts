@@ -1,7 +1,7 @@
 export const config = {
   anthropic: {
     apiKey: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || '',
-    model: 'claude-opus-4-5-20251101',
+    model: 'claude-sonnet-4-20250514',
     maxTokens: 4096,
   },
 

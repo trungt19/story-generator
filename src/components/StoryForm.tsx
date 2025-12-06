@@ -1,11 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import type { StoryParameters, StoryGenre, StoryTone, StoryLength } from '@/types/story';
+import { useState, useEffect } from 'react';
+import type { StoryParameters, StoryGenre, StoryTone, StoryLength, Character } from '@/types/story';
+import { CharacterBuilder } from './CharacterBuilder';
 
 interface StoryFormProps {
   onSubmit: (params: StoryParameters) => void;
   isGenerating: boolean;
+  initialPrompt?: string;
+  continuationMode?: boolean;
 }
 
 const genreConfig: { value: StoryGenre; label: string; icon: string }[] = [
@@ -37,12 +40,20 @@ const lengthConfig: { value: StoryLength; label: string; description: string }[]
   { value: 'long', label: 'Long', description: '2500-5000 words' },
 ];
 
-export function StoryForm({ onSubmit, isGenerating }: StoryFormProps) {
+export function StoryForm({ onSubmit, isGenerating, initialPrompt, continuationMode }: StoryFormProps) {
   const [genre, setGenre] = useState<StoryGenre>('fantasy');
   const [tone, setTone] = useState<StoryTone>('lighthearted');
   const [length, setLength] = useState<StoryLength>('short');
   const [prompt, setPrompt] = useState('');
   const [setting, setSetting] = useState('');
+  const [characters, setCharacters] = useState<Character[]>([]);
+
+  // Handle initial prompt for continuation mode
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+    }
+  }, [initialPrompt]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +68,7 @@ export function StoryForm({ onSubmit, isGenerating }: StoryFormProps) {
       length,
       prompt: prompt.trim(),
       setting: setting.trim() || undefined,
+      characters: characters.length > 0 ? characters : undefined,
     };
 
     onSubmit(params);
@@ -67,14 +79,22 @@ export function StoryForm({ onSubmit, isGenerating }: StoryFormProps) {
       <div className="glass-card rounded-2xl p-6 sm:p-8 space-y-8">
         {/* Header */}
         <div className="flex items-center gap-3 pb-6 border-b border-neutral-200 dark:border-neutral-700">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${continuationMode ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-primary-500 to-purple-600'}`}>
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              {continuationMode ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              )}
             </svg>
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Create Your Story</h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">Fill in the details below to generate a unique story</p>
+            <h2 className="text-2xl font-bold text-neutral-800 dark:text-neutral-100">
+              {continuationMode ? 'Continue Your Story' : 'Create Your Story'}
+            </h2>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              {continuationMode ? 'Add to your existing narrative' : 'Fill in the details below to generate a unique story'}
+            </p>
           </div>
         </div>
 
@@ -213,6 +233,13 @@ export function StoryForm({ onSubmit, isGenerating }: StoryFormProps) {
             disabled={isGenerating}
           />
         </div>
+
+        {/* Character Builder */}
+        <CharacterBuilder
+          characters={characters}
+          onChange={setCharacters}
+          disabled={isGenerating}
+        />
 
         {/* Submit Button */}
         <button

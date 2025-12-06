@@ -6,8 +6,9 @@ interface UsageStats {
   estimatedCost: number;
 }
 
-const COST_PER_1M_INPUT_TOKENS = 5;
-const COST_PER_1M_OUTPUT_TOKENS = 25;
+// Claude Sonnet 4 pricing
+const COST_PER_1M_INPUT_TOKENS = 3;
+const COST_PER_1M_OUTPUT_TOKENS = 15;
 const WORDS_TO_TOKENS_RATIO = 0.75;
 
 export function estimateCost(params: {
